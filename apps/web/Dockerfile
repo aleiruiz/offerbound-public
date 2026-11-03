@@ -12,6 +12,9 @@ RUN pnpm install --frozen-lockfile --workspace-root --filter "@offerbound/web...
 COPY tsconfig.base.json ./
 COPY packages/contracts packages/contracts
 COPY apps/web apps/web
+# Optional public demo link on the sign-in page.
+ARG VITE_DEMO_URL=
+ENV VITE_DEMO_URL=$VITE_DEMO_URL
 RUN pnpm --filter @offerbound/web build
 
 FROM caddy:2-alpine

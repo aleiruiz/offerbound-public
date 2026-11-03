@@ -95,6 +95,9 @@ services:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
+      args:
+        # Optional: public demo URL linked from the sign-in page. Empty hides the link.
+        VITE_DEMO_URL: ${DEMO_URL:-}
     restart: unless-stopped
     depends_on:
       api:

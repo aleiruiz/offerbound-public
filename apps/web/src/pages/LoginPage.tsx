@@ -12,7 +12,8 @@ import { LanguageSelect } from "../components/LanguageSelect";
 import { Logo } from "../components/Logo";
 import { t } from "../i18n";
 
-const DEMO_URL = "https://demo.offerbound.example.com";
+// Link to a public demo instance, set at build time (VITE_DEMO_URL). No link when unset.
+const demoUrl = (): string | undefined => import.meta.env.VITE_DEMO_URL || undefined;
 
 // Colours of the identity band and route line (DESIGN_SPEC §5.9, Login.dc.html).
 const INK = "#16202e";
@@ -284,12 +285,14 @@ export function LoginPage() {
               )}
             </Typography>
           </Paper>
-          <Typography variant="body2" color="text.secondary">
-            {t("Just looking around?")}{" "}
-            <Link href={DEMO_URL} underline="none" sx={{ fontWeight: 700 }}>
-              {t("Open the public demo")}
-            </Link>
-          </Typography>
+          {demoUrl() && (
+            <Typography variant="body2" color="text.secondary">
+              {t("Just looking around?")}{" "}
+              <Link href={demoUrl()} underline="none" sx={{ fontWeight: 700 }}>
+                {t("Open the public demo")}
+              </Link>
+            </Typography>
+          )}
         </Box>
       </Box>
     </Box>
