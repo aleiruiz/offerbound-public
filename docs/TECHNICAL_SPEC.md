@@ -478,7 +478,7 @@ Asynchronous (not used for search-agent leads, which are checked and ranked insi
 
 ### 7.2 Link check (AC-9.8)
 
-`GET` with redirects (max 5), timeout 10 s, user agent `Offerbound/1.0 (+https://github.com/aleiruiz/offerbound)`, body read up to 1 MB.
+`GET` with redirects (max 5), timeout 10 s, user agent `Offerbound/1.0 (+https://github.com/aleiruiz/offerbound-public)`, body read up to 1 MB.
 - Host `linkedin.com` → `unverifiable` (no request).
 - 404 or 410 → `dead`.
 - A Workday job page (`{tenant}.wdN.myworkdayjobs.com/[locale/]{site}/job/...`) is a script-only shell, so Workday's posting API on the same host is asked instead (`/wday/cxs/{tenant}/{site}/job/...`): 404 or 410, or `canApply: false` → `dead`; a posting with a title → `verified`, its description as the excerpt; anything else → `unverified`.

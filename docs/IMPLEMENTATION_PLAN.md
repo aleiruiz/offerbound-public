@@ -1590,7 +1590,7 @@ checkLink(url: string, fetch: LinkFetcher): Promise<LinkCheckResult>;
   - Uses an undici `Agent` whose `connect.lookup` returns the address it already validated, so there is no second lookup.
   - Allows only `http`/`https` on ports 80 and 443, and follows redirects by hand, re-validating each hop, up to 5.
   - Times out after 10 s and reads at most 1 MB of body, and only for `text/html` or `text/plain`.
-  - Sends the UA `Offerbound/1.0 (+https://github.com/aleiruiz/offerbound)` and no cookies.
+  - Sends the UA `Offerbound/1.0 (+https://github.com/aleiruiz/offerbound-public)` and no cookies.
 - **Adds `fetchLink` to `AppDeps`.**
 
 **Tests:**

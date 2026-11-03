@@ -22,7 +22,7 @@ import { Agent } from "undici";
  * Nothing here logs. Error messages name the host and never the path or query string.
  */
 
-export const USER_AGENT = "Offerbound/1.0 (+https://github.com/aleiruiz/offerbound)";
+export const USER_AGENT = "Offerbound/1.0 (+https://github.com/aleiruiz/offerbound-public)";
 const DEFAULT_TIMEOUT_MS = 10_000;
 const MAX_REDIRECTS = 5;
 const MAX_BODY_BYTES = 1_048_576;

@@ -354,7 +354,7 @@ describe("createSafeFetcher", () => {
     );
     const fetcher = createSafeFetcher({ lookup: publicLookup, transport });
     await fetcher("https://jobs.example/start");
-    expect(USER_AGENT).toBe("Offerbound/1.0 (+https://github.com/aleiruiz/offerbound)");
+    expect(USER_AGENT).toBe("Offerbound/1.0 (+https://github.com/aleiruiz/offerbound-public)");
     for (const call of calls) {
       expect(call.headers["user-agent"]).toBe(USER_AGENT);
       const names = Object.keys(call.headers).map((n) => n.toLowerCase());
