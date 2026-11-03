@@ -1,10 +1,14 @@
 import { screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import lockupDark from "../assets/brand/lockup-dark.svg";
 import { renderWithProviders } from "../../test/render";
 import { LoginPage } from "./LoginPage";
 
 describe("LoginPage", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("the sign-in page renders the wordmark, 'Welcome back' and one 'Sign in with Google' link to /api/v1/auth/google/start", () => {
     renderWithProviders(<LoginPage />, { route: "/login" });
     expect(screen.getByRole("img", { name: "Offerbound" })).toHaveAttribute("src", lockupDark);
@@ -24,6 +28,7 @@ describe("LoginPage", () => {
   });
 
   it("the sign-in page shows the read-only Gmail note and the public demo link", () => {
+    vi.stubEnv("VITE_DEMO_URL", "https://demo.offerbound.example.com");
     renderWithProviders(<LoginPage />, { route: "/login" });
     expect(screen.getByText("Read-only Gmail access.")).toBeInTheDocument();
     expect(
@@ -36,6 +41,13 @@ describe("LoginPage", () => {
       "href",
       "https://demo.offerbound.example.com",
     );
+  });
+
+  it("hides the public demo link when no demo URL is configured", () => {
+    vi.stubEnv("VITE_DEMO_URL", "");
+    renderWithProviders(<LoginPage />, { route: "/login" });
+    expect(screen.queryByText(/Just looking around\?/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Open the public demo" })).not.toBeInTheDocument();
   });
 
   it("the route marker is marked aria-hidden and has data-testid='route-marker'", () => {
