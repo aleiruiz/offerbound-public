@@ -225,45 +225,50 @@ describe("LeadsPage", () => {
   });
 
   // Heavy under jsdom (MUI re-renders on every step); see heavyIt.
-  heavyIt(
-    "track filter chips and the sort 'Track, then fit' / 'Newest first' change the query",
-    async () => {
-      const { api, user } = setup();
-      await screen.findByText("Tidewater Labs");
-      // The default asks for no explicit sort and no track.
-      expect(lastList(api).searchParams.has("sort")).toBe(false);
-      expect(lastList(api).searchParams.has("track")).toBe(false);
+  heavyIt("track filter chips and every sort change the query", async () => {
+    const { api, user } = setup();
+    await screen.findByText("Tidewater Labs");
+    // The default asks for no explicit sort and no track.
+    expect(lastList(api).searchParams.has("sort")).toBe(false);
+    expect(lastList(api).searchParams.has("track")).toBe(false);
 
-      const group = screen.getByRole("group", { name: "Filter by track" });
-      expect(within(group).getByRole("button", { name: "All tracks" })).toHaveAttribute(
-        "aria-pressed",
-        "true",
-      );
-      await user.click(within(group).getByRole("button", { name: "Relocation" }));
-      expect(await screen.findByText("Kittiwake Systems")).toBeInTheDocument();
-      await waitFor(() => expect(screen.queryByText("Tidewater Labs")).not.toBeInTheDocument());
-      expect(lastList(api).searchParams.get("track")).toBe("B");
-      expect(within(group).getByRole("button", { name: "Relocation" })).toHaveAttribute(
-        "aria-pressed",
-        "true",
-      );
-      expect(screen.getByTestId("where")).toHaveTextContent("track=B");
+    const group = screen.getByRole("group", { name: "Filter by track" });
+    expect(within(group).getByRole("button", { name: "All tracks" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await user.click(within(group).getByRole("button", { name: "Relocation" }));
+    expect(await screen.findByText("Kittiwake Systems")).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText("Tidewater Labs")).not.toBeInTheDocument());
+    expect(lastList(api).searchParams.get("track")).toBe("B");
+    expect(within(group).getByRole("button", { name: "Relocation" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByTestId("where")).toHaveTextContent("track=B");
 
-      // Pressing the chosen track again goes back to every track.
-      await user.click(within(group).getByRole("button", { name: "Relocation" }));
-      expect(await screen.findByText("Tidewater Labs")).toBeInTheDocument();
-      expect(lastList(api).searchParams.has("track")).toBe(false);
+    // Pressing the chosen track again goes back to every track.
+    await user.click(within(group).getByRole("button", { name: "Relocation" }));
+    expect(await screen.findByText("Tidewater Labs")).toBeInTheDocument();
+    expect(lastList(api).searchParams.has("track")).toBe(false);
 
-      await user.click(screen.getByRole("combobox", { name: "Sort" }));
-      await user.click(await screen.findByRole("option", { name: "Newest first" }));
-      await waitFor(() => expect(lastList(api).searchParams.get("sort")).toBe("newest"));
-      expect(screen.getByTestId("where")).toHaveTextContent("sort=newest");
+    await user.click(screen.getByRole("combobox", { name: "Sort" }));
+    await user.click(await screen.findByRole("option", { name: "Newest first" }));
+    await waitFor(() => expect(lastList(api).searchParams.get("sort")).toBe("newest"));
+    expect(screen.getByTestId("where")).toHaveTextContent("sort=newest");
 
-      await user.click(screen.getByRole("combobox", { name: "Sort" }));
-      await user.click(await screen.findByRole("option", { name: "Track, then fit" }));
-      await waitFor(() => expect(lastList(api).searchParams.has("sort")).toBe(false));
-    },
-  );
+    // The score-and-date sorts.
+    await user.click(screen.getByRole("combobox", { name: "Sort" }));
+    await user.click(await screen.findByRole("option", { name: "Newest day, then fit" }));
+    await waitFor(() => expect(lastList(api).searchParams.get("sort")).toBe("day_fit"));
+    await user.click(screen.getByRole("combobox", { name: "Sort" }));
+    await user.click(await screen.findByRole("option", { name: "Best fit, then newest" }));
+    await waitFor(() => expect(lastList(api).searchParams.get("sort")).toBe("fit_newest"));
+
+    await user.click(screen.getByRole("combobox", { name: "Sort" }));
+    await user.click(await screen.findByRole("option", { name: "Track, then fit" }));
+    await waitFor(() => expect(lastList(api).searchParams.has("sort")).toBe(false));
+  });
 
   it("keeps the track and the sort when the tab changes", async () => {
     const { api, user } = setup({}, { route: "/leads?track=A&sort=newest" });
@@ -574,6 +579,21 @@ describe("LeadsPage", () => {
         rowOf("Halyard Health").getByRole("link", { name: "Open application" }),
       ).toHaveAttribute("href", "/applications/a-halyard");
       expect(rowOf("Halyard Health").queryByRole("button", { name: "Mark applied" })).toBeNull();
+    });
+
+    it("says a reconsidered lead under the fit threshold stays hidden from New", async () => {
+      const low = { ...SABLE, fitScore: 40 };
+      const { user } = setup(
+        { "PATCH /api/v1/leads/l5": () => ({ ...low, status: "new", version: 2 }) },
+        { route: "/leads?tab=dismissed", leads: ALL_LEADS.map((l) => (l.id === "l5" ? low : l)) },
+      );
+      await screen.findByText("Sable Security");
+      await user.click(rowOf("Sable Security").getByRole("button", { name: "Reconsider" }));
+      expect(
+        await screen.findByText(
+          "Reconsidered Sable Security. Its fit is under 60, so it is hidden from New.",
+        ),
+      ).toBeInTheDocument();
     });
 
     it("Dismissed rows offer Reconsider, which patches the lead back to new", async () => {

@@ -68,6 +68,9 @@ describe("request bodies", () => {
       limit: 25,
     });
     expect(LeadsQuerySchema.parse({ q: "  " })).toEqual({ sort: "track_fit", limit: 50 });
+    for (const sort of ["fit_newest", "day_fit"]) {
+      expect(LeadsQuerySchema.parse({ sort }).sort).toBe(sort);
+    }
     expect(LeadsQuerySchema.parse({ q: " acme " }).q).toBe("acme");
     expect(LeadsQuerySchema.safeParse({ sort: "oldest" }).success).toBe(false);
     expect(LeadsQuerySchema.safeParse({ limit: "201" }).success).toBe(false);

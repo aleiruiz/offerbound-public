@@ -366,9 +366,20 @@ export const LeadPatchSchema = z.object({
 });
 export type LeadPatch = z.infer<typeof LeadPatchSchema>;
 
-/** How `GET /leads` orders a page: track priority then fit (AC-12.4, the default), or newest first. */
-export const LeadSortSchema = z.enum(["track_fit", "newest"]);
+/**
+ * How `GET /leads` orders a page: track priority then fit (AC-12.4, the default), newest first,
+ * best fit then newest (`fit_newest`), or newest day then best fit (`day_fit`: the day a lead was
+ * found, in the owner's time zone, then fit score within that day).
+ */
+export const LeadSortSchema = z.enum(["track_fit", "newest", "fit_newest", "day_fit"]);
 export type LeadSort = z.infer<typeof LeadSortSchema>;
+
+/**
+ * New leads ranked below this fit score (0 to 100) are not listed or counted: the owner only wants
+ * to see leads that fit at least this well. Unranked leads (no score) are still listed, and leads
+ * the owner already moved (shortlisted, applied, dismissed) are not affected.
+ */
+export const MIN_NEW_LEAD_FIT_SCORE = 60;
 
 /**
  * `GET /leads` query (TECHNICAL_SPEC §10.1, plus `sort`: the spec lists none, AC-12.4 needs two).

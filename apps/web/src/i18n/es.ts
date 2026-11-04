@@ -471,6 +471,10 @@ export const es: Readonly<Record<string, string>> = {
   Suppressed: "Apartadas",
   "Track, then fit": "Línea, luego afinidad",
   "Newest first": "Más recientes primero",
+  "Newest day, then fit": "Día más reciente, luego afinidad",
+  "Best fit, then newest": "Mayor afinidad, luego más recientes",
+  "New leads with a fit under {score} are hidden.":
+    "Las vacantes nuevas con afinidad menor a {score} están ocultas.",
   "Couldn't shortlist {company}. Try again.":
     "No se pudo preseleccionar {company}. Inténtalo de nuevo.",
   "Couldn't dismiss {company}. Try again.": "No se pudo descartar {company}. Inténtalo de nuevo.",
@@ -506,6 +510,8 @@ export const es: Readonly<Record<string, string>> = {
   "Search started": "Búsqueda iniciada",
   "Couldn't start the search. Try again.": "No se pudo iniciar la búsqueda. Inténtalo de nuevo.",
   "Reconsidered {company}": "Se reconsideró {company}",
+  "Reconsidered {company}. Its fit is under {score}, so it is hidden from New.":
+    "Se reconsideró {company}. Su afinidad es menor a {score}, así que está oculta en Nuevas.",
   "Marked as applied": "Marcada como postulada",
   "Couldn't mark {company} as applied. Try again.":
     "No se pudo marcar {company} como postulada. Inténtalo de nuevo.",

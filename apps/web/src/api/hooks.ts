@@ -591,7 +591,7 @@ export function useFetchSeenCompanies() {
 }
 
 /** How the lists are ordered: track priority then fit (AC-12.4, the default), or newest first. */
-export type LeadSort = "track_fit" | "newest";
+export type LeadSort = "track_fit" | "newest" | "fit_newest" | "day_fit";
 
 /** What the Leads list asks for (AC-9.2, AC-12.4). `track` is a configured track key. */
 export interface LeadFilters {
