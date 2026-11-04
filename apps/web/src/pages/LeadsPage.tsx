@@ -1,5 +1,6 @@
 import {
   LeadStatusSchema,
+  MIN_NEW_LEAD_FIT_SCORE,
   type Lead,
   type LeadStatus,
   type SearchRun,
@@ -53,7 +54,8 @@ import { msg, t, tc, tn, tx } from "../i18n";
 /**
  * Leads (DESIGN_SPEC §5.4, §6.4, §9.3; AC-9.2, 9.6, 9.7, 10.2, 12.3, 12.4): the five lists as tabs,
  * track chips, the sort, one row per lead with its actions and the keys that do the same, and the
- * progress card while a search runs. The tab, the track and the sort live in the address.
+ * progress card while a search runs. The tab, the track and the sort live in the address. New leads
+ * ranked under MIN_NEW_LEAD_FIT_SCORE are not listed (the API leaves them out).
  */
 
 const TABS: { key: LeadStatus; label: string }[] = [
@@ -103,6 +105,18 @@ const SORTS: { value: LeadSort; label: string }[] = [
       return t("Newest first");
     },
   },
+  {
+    value: "day_fit",
+    get label() {
+      return t("Newest day, then fit");
+    },
+  },
+  {
+    value: "fit_newest",
+    get label() {
+      return t("Best fit, then newest");
+    },
+  },
 ];
 const DEFAULT_SORT: LeadSort = "track_fit";
 
@@ -119,6 +133,20 @@ const FAILED = {
     return t("Couldn't reconsider {company}. Try again.");
   },
 };
+/**
+ * A reconsidered lead goes back to New. When it is ranked under the fit threshold it is not listed
+ * there, so the message says so instead of letting the lead seem to vanish.
+ */
+function reconsidered(lead: Lead): string {
+  const hidden = lead.fitScore !== null && lead.fitScore < MIN_NEW_LEAD_FIT_SCORE;
+  return hidden
+    ? t("Reconsidered {company}. Its fit is under {score}, so it is hidden from New.", {
+        company: lead.company.name,
+        score: MIN_NEW_LEAD_FIT_SCORE,
+      })
+    : t("Reconsidered {company}", { company: lead.company.name });
+}
+
 const SEARCH_RUNNING = msg("A search is already running");
 const CHANGED_ELSEWHERE = msg("Changes were made elsewhere. Leads have been refreshed.");
 
@@ -447,7 +475,7 @@ export function LeadsPage() {
   const reconsiderDismissed = useSetLeadStatus({
     onSuccess: (_updated, { lead }) => {
       settle(lead);
-      snackbar.show(t("Reconsidered {company}", { company: lead.company.name }));
+      snackbar.show(reconsidered(lead));
     },
     onError: (error, { lead }) => {
       settle(lead);
@@ -459,7 +487,7 @@ export function LeadsPage() {
   const reconsiderSuppressed = useReconsiderLead({
     onSuccess: (_updated, lead) => {
       settle(lead);
-      snackbar.show(t("Reconsidered {company}", { company: lead.company.name }));
+      snackbar.show(reconsidered(lead));
     },
     onError: (error, lead) => {
       settle(lead);
@@ -583,6 +611,13 @@ export function LeadsPage() {
             {t("Leads")}
           </Typography>
           <SearchCaption runs={runs.data} timezone={timezone} now={now} />
+          {filters.status === "new" ? (
+            <Typography variant="caption" color="text.secondary" component="p">
+              {t("New leads with a fit under {score} are hidden.", {
+                score: MIN_NEW_LEAD_FIT_SCORE,
+              })}
+            </Typography>
+          ) : null}
           {newCount > 0 ? (
             <Typography variant="caption" color="text.secondary" component="p">
               {t("{count} new in this list since your last visit", { count: newCount })}

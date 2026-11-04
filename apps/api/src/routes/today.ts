@@ -12,7 +12,7 @@ import {
 import { dayRangeUtc, ownerLocalDay } from "@offerbound/domain";
 import type { AppDeps } from "../deps.js";
 import { getSyncStatus } from "../gmail/sync.js";
-import { listLeads } from "../leads/owner-actions.js";
+import { LISTED_BY_FIT, listLeads } from "../leads/owner-actions.js";
 import { getSettings } from "../settings/service.js";
 import { nextInterviewAtByApplication, toApplicationSummary, toInterview } from "./interviews.js";
 
@@ -69,11 +69,12 @@ export async function getToday(ctx: TodayCtx, now: Date): Promise<Today> {
         foundAt: { gte: range.start, lt: range.end },
         status: { not: "suppressed" },
         pipelineState: "ready",
+        ...LISTED_BY_FIT,
       },
     }),
     followUpsDue(prisma, now),
     upcomingInterviews(prisma, now),
-    listLeads(prisma, LeadsQuerySchema.parse({ status: "new", limit: TOP_LEADS })),
+    listLeads(prisma, LeadsQuerySchema.parse({ status: "new", limit: TOP_LEADS }), timezone),
     prisma.reviewItem.count({ where: { state: "open" } }),
     prisma.reviewItem.findMany({
       where: { state: "open" },

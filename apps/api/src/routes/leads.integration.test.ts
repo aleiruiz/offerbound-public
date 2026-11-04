@@ -5,6 +5,7 @@ import {
   ApplicationDetailSchema,
   CompanySchema,
   LeadSchema,
+  MIN_NEW_LEAD_FIT_SCORE,
   PageSchema,
   type ApiErrorBody,
   type Lead,
@@ -118,16 +119,17 @@ describe("GET /leads", () => {
     ]);
   });
 
-  it("pages with a cursor in the same order, for both sorts", async () => {
+  it("pages with a cursor in the same order, for every sort", async () => {
     const { call } = await appWith();
     for (let i = 0; i < 7; i += 1) {
       await seedLead(`Co ${i}`, {
         track: i % 2 === 0 ? "A" : "B",
-        fitScore: 50 + (i % 3),
-        foundAt: new Date(Date.UTC(2026, 8, 1 + (i % 4))),
+        fitScore: 70 + (i % 3),
+        // Two leads a day, some hours apart, so day_fit has days with more than one lead.
+        foundAt: new Date(Date.UTC(2026, 8, 1 + (i % 4), 9 + i)),
       });
     }
-    for (const sort of ["track_fit", "newest"]) {
+    for (const sort of ["track_fit", "newest", "fit_newest", "day_fit"]) {
       const all = LeadPage.parse(
         (await call("GET", `/leads?status=new&sort=${sort}&limit=200`)).json(),
       );
@@ -155,13 +157,77 @@ describe("GET /leads", () => {
       fitScore: 99,
       foundAt: new Date(Date.UTC(2026, 8, 1)),
     });
-    const x = await seedLead("X Co", { track: "B", fitScore: 10, foundAt: same });
+    const x = await seedLead("X Co", { track: "B", fitScore: 60, foundAt: same });
     const y = await seedLead("Y Co", { track: null, fitScore: null, foundAt: same });
     const fresh = await seedLead("Fresh Co", { foundAt: new Date(Date.UTC(2026, 8, 20)) });
 
     const page = LeadPage.parse((await call("GET", "/leads?status=new&sort=newest")).json());
     const tied = [x.id, y.id].sort().reverse();
     expect(page.items.map((l) => l.id)).toEqual([fresh.id, ...tied, old.id]);
+  });
+
+  it("sort=fit_newest orders by fit score, then found date newest", async () => {
+    const { call } = await appWith();
+    const at = (day: number) => new Date(Date.UTC(2026, 8, day, 12));
+    const a80Old = await seedLead("A", { track: "A", fitScore: 80, foundAt: at(1) });
+    const b95 = await seedLead("B", { track: "B", fitScore: 95, foundAt: at(2) });
+    const a80New = await seedLead("C", { track: "B", fitScore: 80, foundAt: at(5) });
+    const unranked = await seedLead("D", { fitScore: null, foundAt: at(9) });
+
+    const page = LeadPage.parse((await call("GET", "/leads?status=new&sort=fit_newest")).json());
+    expect(page.items.map((l) => l.id)).toEqual([b95.id, a80New.id, a80Old.id, unranked.id]);
+  });
+
+  it("sort=day_fit orders by the owner's local day found, newest first, then fit score", async () => {
+    const { call } = await appWith();
+    // The test owner's time zone is America/Monterrey (UTC-6): 03:00 UTC on Sep 10 is Sep 9 there.
+    const sep9Late = await seedLead("A", {
+      fitScore: 70,
+      foundAt: new Date("2026-09-10T03:00:00Z"),
+    });
+    const sep9Best = await seedLead("B", {
+      fitScore: 90,
+      foundAt: new Date("2026-09-09T15:00:00Z"),
+    });
+    const sep10Low = await seedLead("C", {
+      fitScore: 65,
+      foundAt: new Date("2026-09-10T08:00:00Z"),
+    });
+    const sep10Top = await seedLead("D", {
+      fitScore: 99,
+      foundAt: new Date("2026-09-10T07:00:00Z"),
+    });
+    const sep8 = await seedLead("E", { fitScore: 100, foundAt: new Date("2026-09-08T15:00:00Z") });
+
+    const page = LeadPage.parse((await call("GET", "/leads?status=new&sort=day_fit")).json());
+    expect(page.items.map((l) => l.id)).toEqual([
+      sep10Top.id,
+      sep10Low.id,
+      sep9Best.id,
+      sep9Late.id,
+      sep8.id,
+    ]);
+  });
+
+  it(`leaves out New leads ranked under ${MIN_NEW_LEAD_FIT_SCORE}, everywhere they are counted`, async () => {
+    const { call } = await appWith();
+    const low = await seedLead("Low", { fitScore: MIN_NEW_LEAD_FIT_SCORE - 1 });
+    const edge = await seedLead("Edge", { fitScore: MIN_NEW_LEAD_FIT_SCORE });
+    const unranked = await seedLead("Unranked", { fitScore: null });
+    // Leads the owner already moved stay listed whatever their score.
+    const shortlisted = await seedLead("Kept", { fitScore: 20, status: "shortlisted" });
+
+    const ids = async (query: string) =>
+      LeadPage.parse((await call("GET", `/leads?${query}`)).json())
+        .items.map((l) => l.id)
+        .sort();
+    for (const sort of ["track_fit", "newest", "fit_newest", "day_fit"]) {
+      expect(await ids(`status=new&sort=${sort}`)).toEqual([edge.id, unranked.id].sort());
+    }
+    expect(await ids("status=shortlisted")).toEqual([shortlisted.id]);
+    expect(await ids("")).not.toContain(low.id);
+    const nav = (await call("GET", "/nav-counts")).json<{ newLeads: number }>();
+    expect(nav.newLeads).toBe(2);
   });
 
   it("refuses an unknown sort and a cursor from the other sort", async () => {
@@ -685,7 +751,7 @@ describe("POST /leads/:id/reconsider", () => {
       verification: "verified",
       verifiedAt: NOW,
       rankedAt: NOW,
-      fitScore: 40,
+      fitScore: 75,
     });
     const res = await call("POST", `/leads/${checked.id}/reconsider`);
     expect(res.statusCode).toBe(200);

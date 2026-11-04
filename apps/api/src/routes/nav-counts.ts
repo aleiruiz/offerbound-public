@@ -2,6 +2,7 @@ import type { PrismaClient } from "@prisma/client";
 import type { FastifyInstance } from "fastify";
 import type { ApplicationStatus, NavCounts } from "@offerbound/contracts";
 import type { AppDeps } from "../deps.js";
+import { LISTED_BY_FIT } from "../leads/owner-actions.js";
 import { countUpcomingInterviews } from "./interviews.js";
 
 /** Applications still in play: the statuses before a final outcome. */
@@ -18,12 +19,13 @@ const OPEN_STATUSES: ApplicationStatus[] = [
  * - `upcomingInterviews` is the Upcoming list of the Interviews page (to-schedule interviews and
  *   every scheduled one from now on, no 7-day window), so the badge and the list agree. Today's own
  *   "next 7 days" list is separate.
- * - `newLeads` is the New tab: New leads that have been checked and ranked.
+ * - `newLeads` is the New tab: New leads that have been checked and ranked, without the ones ranked
+ *   below the fit threshold.
  */
 export async function getNavCounts(prisma: PrismaClient, now: Date): Promise<NavCounts> {
   const [openApplications, newLeads, upcomingInterviews, openReview] = await Promise.all([
     prisma.application.count({ where: { status: { in: OPEN_STATUSES } } }),
-    prisma.lead.count({ where: { status: "new", pipelineState: "ready" } }),
+    prisma.lead.count({ where: { status: "new", pipelineState: "ready", ...LISTED_BY_FIT } }),
     countUpcomingInterviews(prisma, now),
     prisma.reviewItem.count({ where: { state: "open" } }),
   ]);

@@ -82,9 +82,9 @@ const NOT_JOB_RELATED: Extraction = {
   summary: "Not related to the job search",
 };
 
-/** Deterministic score 50..90 from the lead reference. */
+/** Deterministic score from the lead reference, 60 to 100: every fixture lead ranks at or above the New list's fit threshold, so it is listed. */
 function scoreFor(leadRef: string): number {
-  return 50 + (parseInt(inputKey("rank", leadRef).slice(0, 8), 16) % 41);
+  return 60 + (parseInt(inputKey("rank", leadRef).slice(0, 8), 16) % 41);
 }
 
 function rankLead(input: RankInput, lead: RankInput["leads"][number]): Ranking {

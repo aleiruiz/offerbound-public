@@ -38,7 +38,7 @@ export function sendVersionConflict(reply: FastifyReply, error: VersionConflictE
  */
 export function registerLeadRoutes(app: FastifyInstance, deps: AppDeps): void {
   app.get("/leads", async (request): Promise<Page<Lead>> => {
-    return listLeads(deps.prisma, LeadsQuerySchema.parse(request.query));
+    return listLeads(deps.prisma, LeadsQuerySchema.parse(request.query), deps.env.userTimezone);
   });
 
   app.post("/leads", async (request, reply): Promise<Lead> => {

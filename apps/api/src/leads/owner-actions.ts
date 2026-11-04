@@ -2,6 +2,7 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import {
   LeadSortSchema,
+  MIN_NEW_LEAD_FIT_SCORE,
   type Lead as LeadDto,
   type LeadCreate,
   type LeadPatch,
@@ -85,7 +86,7 @@ const NO_TRACK_RANK = 1000;
 const CursorSchema = z.object({
   /** The sort the cursor was made for. */
   s: LeadSortSchema,
-  /** Track rank, fit key and found date of the last row of the page (`r` and `f` only for track_fit). */
+  /** Rank (track rank or found day), fit key and found date of the last row of the page. */
   r: z.number().int(),
   f: z.number().int(),
   t: z.iso.datetime(),
@@ -120,26 +121,73 @@ function likePattern(q: string): string {
 type ListedKey = { id: string; rank: number; fit: number; foundAt: Date };
 
 /**
+ * The Prisma filter for leads the owner can see by fit: any lead that is not New, and New leads
+ * that are unranked or ranked at least MIN_NEW_LEAD_FIT_SCORE. The same rule as `listLeads`.
+ */
+export const LISTED_BY_FIT: Prisma.LeadWhereInput = {
+  OR: [
+    { status: { not: "new" } },
+    { fitScore: null },
+    { fitScore: { gte: MIN_NEW_LEAD_FIT_SCORE } },
+  ],
+};
+
+/** One column of a sort: its expression, its direction, and the cursor value it is compared to. */
+type SortKey = { expr: Prisma.Sql; dir: "asc" | "desc"; at: Prisma.Sql };
+
+/** `(k1 > c1) or (k1 = c1 and ((k2 > c2) or ...))`: the rows after the cursor, in sort order. */
+function afterCursor(keys: SortKey[]): Prisma.Sql {
+  const [head, ...rest] = keys;
+  if (head === undefined) return Prisma.sql`false`;
+  const past =
+    head.dir === "asc"
+      ? Prisma.sql`${head.expr} > ${head.at}`
+      : Prisma.sql`${head.expr} < ${head.at}`;
+  if (rest.length === 0) return past;
+  return Prisma.sql`(${past} or (${head.expr} = ${head.at} and ${afterCursor(rest)}))`;
+}
+
+/**
  * `GET /leads`: ready leads only (AC-9.8: a lead is listed after its link check and ranking),
- * filtered by status, track and a search on company or title. Two orders (AC-12.4):
+ * filtered by status, track and a search on company or title. New leads ranked below
+ * MIN_NEW_LEAD_FIT_SCORE are left out. Four orders (AC-12.4 and the owner's score-and-date sorts):
  * `track_fit` is track priority (the owner's configured priorities; no track last), fit score
  * descending (unranked last), then found date newest; `newest` is found date then id, both
- * descending. The id always breaks ties, so a cursor never skips or repeats a row.
+ * descending; `fit_newest` is fit score descending then found date newest; `day_fit` is the day the
+ * lead was found (in `timezone`) newest first, then fit score descending, then found date newest.
+ * The id always breaks ties, so a cursor never skips or repeats a row.
  */
-export async function listLeads(prisma: PrismaClient, query: LeadsQuery): Promise<Page<LeadDto>> {
+export async function listLeads(
+  prisma: PrismaClient,
+  query: LeadsQuery,
+  timezone: string,
+): Promise<Page<LeadDto>> {
   const cursor = query.cursor === undefined ? null : decodeCursor(query.cursor, query.sort);
 
   const { tracks } = (await getSettings(prisma)).search;
-  const rankExpr =
+  const trackRankExpr =
     tracks.length === 0
       ? Prisma.sql`${NO_TRACK_RANK}::int`
       : Prisma.sql`case l.track ${Prisma.join(
           tracks.map((t) => Prisma.sql`when ${t.key} then ${t.priority}::int`),
           " ",
         )} else ${NO_TRACK_RANK}::int end`;
+  // The owner's local calendar day, as days since 1970-01-01.
+  const dayExpr = Prisma.sql`((l.found_at at time zone ${timezone})::date - date '1970-01-01')::int`;
+  // `r` holds the track rank for track_fit and the found day for day_fit; the other sorts leave it 0.
+  const rankExpr =
+    query.sort === "track_fit"
+      ? trackRankExpr
+      : query.sort === "day_fit"
+        ? dayExpr
+        : Prisma.sql`0::int`;
   const fitExpr = Prisma.sql`coalesce(l.fit_score, -1)::int`;
 
-  const where: Prisma.Sql[] = [Prisma.sql`l.pipeline_state = 'ready'`];
+  const where: Prisma.Sql[] = [
+    Prisma.sql`l.pipeline_state = 'ready'`,
+    Prisma.sql`(l.status <> 'new'::lead_status or l.fit_score is null
+      or l.fit_score >= ${MIN_NEW_LEAD_FIT_SCORE}::int)`,
+  ];
   if (query.status !== undefined) where.push(Prisma.sql`l.status = ${query.status}::lead_status`);
   if (query.track !== undefined) where.push(Prisma.sql`l.track = ${query.track}`);
   if (query.q !== undefined) {
@@ -148,21 +196,26 @@ export async function listLeads(prisma: PrismaClient, query: LeadsQuery): Promis
       Prisma.sql`(c.name ilike ${pattern} escape '\\' or l.title ilike ${pattern} escape '\\')`,
     );
   }
-  if (cursor !== null) {
-    const at = new Date(cursor.t);
-    where.push(
-      query.sort === "newest"
-        ? Prisma.sql`(l.found_at < ${at} or (l.found_at = ${at} and l.id < ${cursor.i}::uuid))`
-        : Prisma.sql`(${rankExpr} > ${cursor.r}::int
-            or (${rankExpr} = ${cursor.r}::int and (${fitExpr} < ${cursor.f}::int
-              or (${fitExpr} = ${cursor.f}::int and (l.found_at < ${at}
-                or (l.found_at = ${at} and l.id < ${cursor.i}::uuid))))))`,
-    );
-  }
-  const order =
-    query.sort === "newest"
-      ? Prisma.sql`l.found_at desc, l.id desc`
-      : Prisma.sql`${rankExpr} asc, ${fitExpr} desc, l.found_at desc, l.id desc`;
+
+  const r = cursor === null ? Prisma.sql`0::int` : Prisma.sql`${cursor.r}::int`;
+  const f = cursor === null ? Prisma.sql`0::int` : Prisma.sql`${cursor.f}::int`;
+  const t = cursor === null ? Prisma.sql`now()` : Prisma.sql`${new Date(cursor.t)}`;
+  const i = cursor === null ? Prisma.sql`null` : Prisma.sql`${cursor.i}::uuid`;
+  const found: SortKey = { expr: Prisma.sql`l.found_at`, dir: "desc", at: t };
+  const byId: SortKey = { expr: Prisma.sql`l.id`, dir: "desc", at: i };
+  const fit: SortKey = { expr: fitExpr, dir: "desc", at: f };
+  const keysFor: Record<LeadsQuery["sort"], SortKey[]> = {
+    track_fit: [{ expr: rankExpr, dir: "asc", at: r }, fit, found, byId],
+    newest: [found, byId],
+    fit_newest: [fit, found, byId],
+    day_fit: [{ expr: rankExpr, dir: "desc", at: r }, fit, found, byId],
+  };
+  const sortKeys = keysFor[query.sort];
+  if (cursor !== null) where.push(afterCursor(sortKeys));
+  const order = Prisma.join(
+    sortKeys.map((k) => (k.dir === "asc" ? Prisma.sql`${k.expr} asc` : Prisma.sql`${k.expr} desc`)),
+    ", ",
+  );
 
   const keys = await prisma.$queryRaw<ListedKey[]>`
     select l.id::text as id, ${rankExpr} as rank, ${fitExpr} as fit, l.found_at as "foundAt"
@@ -176,9 +229,9 @@ export async function listLeads(prisma: PrismaClient, query: LeadsQuery): Promis
     where: { id: { in: pageKeys.map((k) => k.id) } },
     include: LEAD_INCLUDE,
   });
-  const byId = new Map(rows.map((row) => [row.id, row]));
+  const rowsById = new Map(rows.map((row) => [row.id, row]));
   const items = pageKeys.flatMap((k) => {
-    const row = byId.get(k.id);
+    const row = rowsById.get(k.id);
     return row === undefined ? [] : [toLeadDto(row)];
   });
 
@@ -187,8 +240,8 @@ export async function listLeads(prisma: PrismaClient, query: LeadsQuery): Promis
     keys.length > query.limit && last !== undefined
       ? encodeCursor({
           s: query.sort,
-          r: query.sort === "newest" ? 0 : Number(last.rank),
-          f: query.sort === "newest" ? 0 : Number(last.fit),
+          r: Number(last.rank),
+          f: Number(last.fit),
           t: last.foundAt.toISOString(),
           i: last.id,
         })
